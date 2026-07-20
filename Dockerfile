@@ -34,6 +34,18 @@ RUN cd dropbear-${DROPBEAR_VERSION} && \
     mkdir -p /opt/bin && cp dropbear dropbearkey dropbearconvert scp /opt/bin/
 
 # -------------------------------------------------------------------
+# Install static Docker CLI for customer container debugging
+# -------------------------------------------------------------------
+ARG DOCKER_STATIC_VERSION=29.5.3
+ARG DOCKER_STATIC_SHA256=34eea64e9c3435f5af1b760827a56a561cd67fc2d6e9cd1813b8bb1e3ff7930b
+
+RUN wget -q https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_STATIC_VERSION}.tgz && \
+    echo "${DOCKER_STATIC_SHA256}  docker-${DOCKER_STATIC_VERSION}.tgz" | sha256sum -c - && \
+    tar xzf docker-${DOCKER_STATIC_VERSION}.tgz && \
+    strip docker/docker && \
+    cp docker/docker /opt/bin/docker
+
+# -------------------------------------------------------------------
 # Build OpenSSH sftp-server (static)
 # -------------------------------------------------------------------
 ARG OPENSSH_VERSION=9.9p1
@@ -57,6 +69,8 @@ FROM ubuntu:noble@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f
 
 COPY --from=builder /opt/bin/ /usr/local/bin/
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY healthcheck.sh /healthcheck.sh
+RUN chmod +x /entrypoint.sh /healthcheck.sh
 
+HEALTHCHECK --interval=5s --timeout=3s --retries=12 CMD ["/healthcheck.sh"]
 ENTRYPOINT ["/entrypoint.sh"]

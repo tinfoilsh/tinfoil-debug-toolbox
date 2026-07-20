@@ -1,12 +1,30 @@
 #!/bin/sh
 set -eu
 
-# Tinfoil Debug SSH Installer
-# Runs once inside a privileged container to install Dropbear on the CVM host.
-# All state goes to /mnt/ramdisk (tmpfs), nothing touches the read-only root.
+# Tinfoil Debug SSH Toolbox
+# Runs as a privileged debug-only container. Dropbear and the shell live in this
+# container, while the CVM host root is mounted at /host for deliberate debug
+# inspection. Nothing requires host systemd or a host /bin/sh.
 
-log() { echo "tinfoil-ssh-installer: $1"; }
-die() { echo "tinfoil-ssh-installer: ERROR - $1" >&2; exit 1; }
+write_serial() {
+    for dev in /host/dev/hvc0 /host/dev/console; do
+        [ -e "$dev" ] || continue
+        (printf '%s\n' "$1" > "$dev") 2>/dev/null || true
+    done
+}
+
+log() {
+    msg="tinfoil-ssh-toolbox: $1"
+    echo "$msg"
+    write_serial "$msg"
+}
+
+die() {
+    msg="tinfoil-ssh-toolbox: ERROR - $1"
+    echo "$msg" >&2
+    write_serial "$msg"
+    exit 1
+}
 
 # Clean up temp files on any exit (success or failure)
 cleanup() { rm -f "${BASE:-/nonexistent}/etc/"*.pem "${BASE:-/nonexistent}/etc/"*.tmp 2>/dev/null || true; }
@@ -30,18 +48,18 @@ $SSH_AUTHORIZED_KEYS
 EOF
 
 # --- Layout -------------------------------------------------------------------
-#   /mnt/ramdisk/dropbear/bin/       - static binaries
+#   /mnt/ramdisk/dropbear/bin/       - static binaries and toolbox wrappers
 #   /mnt/ramdisk/dropbear/etc/       - host key
-#   /mnt/ramdisk/dropbear/ssh/       - bind-mounted over /root/.ssh
+#   /root/.ssh/                      - authorized_keys tmpfs
 
-BASE=/host/mnt/ramdisk/dropbear
+BASE=/mnt/ramdisk/dropbear
 
 # 1. Directory structure
-log "setting up ramdisk directory"
-mkdir -p "$BASE/bin" "$BASE/etc" "$BASE/ssh"
+log "setting up toolbox tmpfs"
+mkdir -p "$BASE/bin" "$BASE/etc" /root/.ssh
 
 # 2. Copy static binaries (no shared libraries needed)
-log "copying static binaries to host ramdisk"
+log "copying static binaries to toolbox tmpfs"
 cp /usr/local/bin/dropbear \
    /usr/local/bin/dropbearkey \
    /usr/local/bin/dropbearconvert \
@@ -49,6 +67,12 @@ cp /usr/local/bin/dropbear \
    /usr/local/bin/sftp-server \
    "$BASE/bin/"
 chmod 755 "$BASE/bin/"*
+
+cat > "$BASE/bin/docker" <<'EOF'
+#!/bin/sh
+exec /usr/local/bin/docker -H unix:///host/run/docker.sock "$@"
+EOF
+chmod 755 "$BASE/bin/docker"
 
 # 3. Host key setup
 #    Accepts OpenSSH PEM format (native output of ssh-keygen / Go crypto/ssh).
@@ -62,7 +86,7 @@ if [ -n "${SSH_HOST_KEY:-}" ]; then
             printf '%s\n' "$SSH_HOST_KEY" > "$BASE/etc/hostkey.pem"
             chmod 600 "$BASE/etc/hostkey.pem"
             "$BASE/bin/dropbearconvert" openssh dropbear "$BASE/etc/hostkey.pem" "$HOST_KEY" \
-                || die "dropbearconvert failed — is SSH_HOST_KEY a valid OpenSSH ed25519 private key?"
+                || die "dropbearconvert failed - is SSH_HOST_KEY a valid OpenSSH ed25519 private key?"
             ;;
         *)
             die "SSH_HOST_KEY must be an OpenSSH PEM private key (-----BEGIN OPENSSH PRIVATE KEY-----). Generate with: ssh-keygen -t ed25519 -f host_key -N ''"
@@ -76,31 +100,22 @@ fi
 
 # 4. Write authorized keys and bind mount over /root/.ssh
 log "writing authorized keys"
-printf '%s\n' "$SSH_AUTHORIZED_KEYS" > "$BASE/ssh/authorized_keys"
-chmod 700 "$BASE/ssh"
-chmod 600 "$BASE/ssh/authorized_keys"
-log "bind mounting over /root/.ssh on host"
-nsenter -t 1 -m -u -i -n -- mount --bind /mnt/ramdisk/dropbear/ssh /root/.ssh
+printf '%s\n' "$SSH_AUTHORIZED_KEYS" > /root/.ssh/authorized_keys
+chmod 700 /root/.ssh
+chmod 600 /root/.ssh/authorized_keys
+cat > /root/.profile <<'EOF'
+export DOCKER_HOST=unix:///host/run/docker.sock
+export PATH=/mnt/ramdisk/dropbear/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cd /host/root 2>/dev/null || cd /
+EOF
+chmod 600 /root/.profile
 
-# 5. Systemd unit in /run (writable tmpfs)
-log "creating systemd service on host"
-cat > /host/run/systemd/system/dropbear-debug.service <<'UNIT'
-[Unit]
-Description=Dropbear SSH Server (Debug)
-After=network.target
-
-[Service]
-ExecStart=/mnt/ramdisk/dropbear/bin/dropbear -F -E -p 22
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-# 6. Start dropbear — systemd owns the process, survives container exit
-log "starting dropbear on host via systemd"
-nsenter -t 1 -m -u -i -n -- systemctl daemon-reload
-nsenter -t 1 -m -u -i -n -- systemctl start dropbear-debug
-
-log "dropbear SSH server installed and running on CVM host"
+# 5. Start Dropbear in the foreground. The container is the supervisor.
+SSH_PORT="${SSH_PORT:-22}"
+case "$SSH_PORT" in
+    ''|*[!0-9]*)
+        die "SSH_PORT must be numeric"
+        ;;
+esac
+log "starting dropbear toolbox on port $SSH_PORT"
+exec "$BASE/bin/dropbear" -F -E -p "$SSH_PORT" -P "$BASE/dropbear.pid" -r "$HOST_KEY" -s -g -j -k
