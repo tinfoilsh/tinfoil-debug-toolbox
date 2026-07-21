@@ -1,0 +1,20 @@
+#!/bin/sh
+cat <<'EOF'
+Tinfoil debug toolbox
+
+Common commands:
+  docker ps
+  docker logs <container>
+  docker inspect <container>
+  docker exec -it <container> sh
+  docker exec <container> nvidia-smi
+
+Helpers:
+  tinfoil-containers
+  tinfoil-logs <container> [docker logs args...]
+  tinfoil-exec <container> [command...]
+  tinfoil-nvidia-smi <container>
+
+This shell is inside the toolbox container. Docker socket access intentionally
+grants control over workload containers in this debug CVM.
+EOF

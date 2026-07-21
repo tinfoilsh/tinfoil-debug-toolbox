@@ -1,7 +1,17 @@
 #!/bin/sh
 set -eu
 
-pidfile=/mnt/ramdisk/dropbear/dropbear.pid
+pidfile=/run/dropbear/dropbear.pid
+
+[ -s /root/.ssh/authorized_keys ] || {
+    echo "authorized_keys missing"
+    exit 1
+}
+
+[ -s /run/dropbear/dropbear_ed25519_host_key ] || {
+    echo "dropbear host key missing"
+    exit 1
+}
 
 [ -s "$pidfile" ] || {
     echo "dropbear pidfile missing"

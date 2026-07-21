@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 1 ]; then
+    echo "usage: tinfoil-logs <container> [docker logs args...]" >&2
+    exit 2
+fi
+
+container="$1"
+shift
+
+exec docker logs --tail=200 -f "$@" "$container"
