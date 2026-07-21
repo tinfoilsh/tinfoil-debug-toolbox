@@ -9,4 +9,4 @@ fi
 container="$1"
 shift
 
-exec docker logs --tail=200 -f "$@" "$container"
+exec docker logs --tail=200 "$@" "$container"
