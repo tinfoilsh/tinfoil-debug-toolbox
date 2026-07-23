@@ -73,8 +73,8 @@ RUN mkdir -p \
         /rootfs/bin \
         /rootfs/dev \
         /rootfs/etc \
-        /rootfs/root \
         /rootfs/run/dropbear \
+        /rootfs/run/root \
         /rootfs/tmp \
         /rootfs/usr/local/bin \
         /rootfs/var/run \
@@ -82,10 +82,10 @@ RUN mkdir -p \
     && for applet in $(/bin/busybox --list); do [ "$applet" = busybox ] && continue; ln -sf busybox "/rootfs/bin/${applet}"; done \
     && cp /opt/bin/dropbear /opt/bin/dropbearkey /opt/bin/dropbearconvert /opt/bin/scp /opt/bin/sftp-server /opt/bin/docker /rootfs/usr/local/bin/ \
     && chmod 0755 /rootfs/entrypoint.sh /rootfs/healthcheck.sh /rootfs/usr/local/bin/* /rootfs/bin/busybox \
-    && chmod 0700 /rootfs/root /rootfs/run/dropbear \
+    && chmod 0700 /rootfs/run/dropbear /rootfs/run/root \
     && chmod 1777 /rootfs/tmp \
     && printf '%s\n' \
-        'root:x:0:0:root:/root:/bin/sh' \
+        'root:x:0:0:root:/run/root:/bin/sh' \
         > /rootfs/etc/passwd \
     && printf '%s\n' \
         'root:x:0:' \
@@ -100,19 +100,20 @@ RUN mkdir -p \
         'Docker socket access is enabled for inspecting and debugging workload containers.' \
         'Run tinfoil-help for the common commands.' \
         > /rootfs/etc/motd \
+    && ln -sf /run/root /rootfs/root \
     && printf '%s\n' \
-        'export DOCKER_HOST="${DOCKER_HOST:-unix:///var/run/docker.sock}"' \
+        'export DOCKER_HOST=unix:///var/run/docker.sock' \
         'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         'export HISTFILE=/tmp/.ash_history' \
         'export PS1="tinfoil-debug-toolbox:\w# "' \
         > /rootfs/etc/profile \
     && printf '%s\n' \
-        'export DOCKER_HOST="${DOCKER_HOST:-unix:///var/run/docker.sock}"' \
+        'export DOCKER_HOST=unix:///var/run/docker.sock' \
         'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         'export HISTFILE=/tmp/.ash_history' \
         'export PS1="tinfoil-debug-toolbox:\w# "' \
         '[ -f /etc/motd ] && cat /etc/motd' \
-        > /rootfs/root/.profile
+        > /rootfs/etc/tinfoil-root-profile
 
 # -------------------------------------------------------------------
 # Stage 2: Minimal toolbox image
@@ -121,5 +122,6 @@ FROM scratch
 
 COPY --from=builder /rootfs/ /
 
+EXPOSE 2222
 HEALTHCHECK --interval=5s --timeout=3s --retries=12 CMD ["/healthcheck.sh"]
 ENTRYPOINT ["/entrypoint.sh"]

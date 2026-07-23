@@ -3,6 +3,8 @@ cat <<'EOF'
 Tinfoil debug toolbox
 
 Common commands:
+  docker pull <image>
+  docker run ...
   docker ps
   docker logs <container>
   docker inspect <container>
@@ -17,4 +19,6 @@ Helpers:
 
 This shell is inside the toolbox container. Docker socket access intentionally
 grants control over workload containers in this debug CVM.
+Dropbear listens on port 2222 by default. If /dev/hvc0 exists, a persistent
+unauthenticated BusyBox root serial console is also kept alive there.
 EOF
