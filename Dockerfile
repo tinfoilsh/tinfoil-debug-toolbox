@@ -3,7 +3,7 @@
 FROM ubuntu:noble@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential wget ca-certificates bzip2 \
+    build-essential wget ca-certificates bzip2 busybox-static \
     zlib1g-dev libssl-dev
 
 # -------------------------------------------------------------------
@@ -17,14 +17,14 @@ RUN wget -q https://matt.ucc.asn.au/dropbear/releases/dropbear-${DROPBEAR_VERSIO
     tar xjf dropbear-${DROPBEAR_VERSION}.tar.bz2
 
 RUN cd dropbear-${DROPBEAR_VERSION} && \
-    # Override defaults: all paths point to /mnt/ramdisk/dropbear/ \
+    # Override defaults so the final scratch image does not need distro paths. \
     printf '%s\n' \
         '#undef SFTPSERVER_PATH' \
-        '#define SFTPSERVER_PATH "/mnt/ramdisk/dropbear/bin/sftp-server"' \
+        '#define SFTPSERVER_PATH "/usr/local/bin/sftp-server"' \
         '#undef DEFAULT_ROOT_PATH' \
-        '#define DEFAULT_ROOT_PATH "/mnt/ramdisk/dropbear/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+        '#define DEFAULT_ROOT_PATH "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         '#undef ED25519_PRIV_FILENAME' \
-        '#define ED25519_PRIV_FILENAME "/mnt/ramdisk/dropbear/etc/dropbear_ed25519_host_key"' \
+        '#define ED25519_PRIV_FILENAME "/run/dropbear/dropbear_ed25519_host_key"' \
         '#undef DROPBEAR_SVR_PASSWORD_AUTH' \
         '#define DROPBEAR_SVR_PASSWORD_AUTH 0' \
         > localoptions.h && \
@@ -62,15 +62,66 @@ RUN cd openssh-${OPENSSH_VERSION} && \
     cp sftp-server /opt/bin/
 
 # -------------------------------------------------------------------
-# Stage 2: Minimal installer image
-# Same pinned digest as builder for consistency
+# Assemble a tiny toolbox rootfs. The final image is scratch: shell and tools
+# live inside this measured debug container, never in the CVM host rootfs.
 # -------------------------------------------------------------------
-FROM ubuntu:noble@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b
+COPY entrypoint.sh /rootfs/entrypoint.sh
+COPY healthcheck.sh /rootfs/healthcheck.sh
+COPY tinfoil-help tinfoil-containers tinfoil-logs tinfoil-exec tinfoil-nvidia-smi /rootfs/usr/local/bin/
 
-COPY --from=builder /opt/bin/ /usr/local/bin/
-COPY entrypoint.sh /entrypoint.sh
-COPY healthcheck.sh /healthcheck.sh
-RUN chmod +x /entrypoint.sh /healthcheck.sh
+RUN mkdir -p \
+        /rootfs/bin \
+        /rootfs/dev \
+        /rootfs/etc \
+        /rootfs/run/dropbear \
+        /rootfs/run/root \
+        /rootfs/tmp \
+        /rootfs/usr/local/bin \
+        /rootfs/var/run \
+    && cp /bin/busybox /rootfs/bin/busybox \
+    && for applet in $(/bin/busybox --list); do [ "$applet" = busybox ] && continue; ln -sf busybox "/rootfs/bin/${applet}"; done \
+    && cp /opt/bin/dropbear /opt/bin/dropbearkey /opt/bin/dropbearconvert /opt/bin/scp /opt/bin/sftp-server /opt/bin/docker /rootfs/usr/local/bin/ \
+    && chmod 0755 /rootfs/entrypoint.sh /rootfs/healthcheck.sh /rootfs/usr/local/bin/* /rootfs/bin/busybox \
+    && chmod 0700 /rootfs/run/dropbear /rootfs/run/root \
+    && chmod 1777 /rootfs/tmp \
+    && printf '%s\n' \
+        'root:x:0:0:root:/run/root:/bin/sh' \
+        > /rootfs/etc/passwd \
+    && printf '%s\n' \
+        'root:x:0:' \
+        > /rootfs/etc/group \
+    && printf '%s\n' \
+        '/bin/sh' \
+        > /rootfs/etc/shells \
+    && printf '%s\n' \
+        'Welcome to the Tinfoil debug toolbox.' \
+        '' \
+        'This shell is inside the measured toolbox container, not the CVM host rootfs.' \
+        'Docker socket access is enabled for inspecting and debugging workload containers.' \
+        'Run tinfoil-help for the common commands.' \
+        > /rootfs/etc/motd \
+    && ln -sf /run/root /rootfs/root \
+    && printf '%s\n' \
+        'export DOCKER_HOST=unix:///var/run/docker.sock' \
+        'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+        'export HISTFILE=/tmp/.ash_history' \
+        'export PS1="tinfoil-debug-toolbox:\w# "' \
+        > /rootfs/etc/profile \
+    && printf '%s\n' \
+        'export DOCKER_HOST=unix:///var/run/docker.sock' \
+        'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
+        'export HISTFILE=/tmp/.ash_history' \
+        'export PS1="tinfoil-debug-toolbox:\w# "' \
+        '[ -f /etc/motd ] && cat /etc/motd' \
+        > /rootfs/etc/tinfoil-root-profile
 
+# -------------------------------------------------------------------
+# Stage 2: Minimal toolbox image
+# -------------------------------------------------------------------
+FROM scratch
+
+COPY --from=builder /rootfs/ /
+
+EXPOSE 2222
 HEALTHCHECK --interval=5s --timeout=3s --retries=12 CMD ["/healthcheck.sh"]
 ENTRYPOINT ["/entrypoint.sh"]

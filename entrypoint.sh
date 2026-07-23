@@ -1,121 +1,147 @@
 #!/bin/sh
 set -eu
+umask 077
 
-# Tinfoil Debug SSH Toolbox
-# Runs as a privileged debug-only container. Dropbear and the shell live in this
-# container, while the CVM host root is mounted at /host for deliberate debug
-# inspection. Nothing requires host systemd or a host /bin/sh.
+DROPBEAR_RUN_DIR=/run/dropbear
+ROOT_HOME=/run/root
+HOST_KEY="$DROPBEAR_RUN_DIR/dropbear_ed25519_host_key"
+HOST_KEY_PEM="$DROPBEAR_RUN_DIR/hostkey.pem"
+DROPBEAR_PIDFILE="$DROPBEAR_RUN_DIR/dropbear.pid"
+SERIAL_PIDFILE=/run/tinfoil-serial-console.pid
+AUTHORIZED_KEYS_FILE="$ROOT_HOME/.ssh/authorized_keys"
 
-write_serial() {
-    for dev in /host/dev/hvc0 /host/dev/console; do
-        [ -e "$dev" ] || continue
-        (printf '%s\n' "$1" > "$dev") 2>/dev/null || true
-    done
-}
+dropbear_pid=
+serial_supervisor_pid=
+stopping=0
+serial_available=0
+authorized_keys_present=0
 
 log() {
-    msg="tinfoil-ssh-toolbox: $1"
-    echo "$msg"
-    write_serial "$msg"
+    msg="tinfoil-debug-toolbox: $*"
+    printf '%s\n' "$msg"
+    [ -e /dev/console ] && (printf '%s\n' "$msg" > /dev/console) 2>/dev/null || true
 }
 
 die() {
-    msg="tinfoil-ssh-toolbox: ERROR - $1"
-    echo "$msg" >&2
-    write_serial "$msg"
+    printf '%s\n' "tinfoil-debug-toolbox: ERROR - $*" >&2
     exit 1
 }
 
-# Clean up temp files on any exit (success or failure)
-cleanup() { rm -f "${BASE:-/nonexistent}/etc/"*.pem "${BASE:-/nonexistent}/etc/"*.tmp 2>/dev/null || true; }
+cleanup() {
+    rm -f "$HOST_KEY_PEM" "$DROPBEAR_PIDFILE" "$SERIAL_PIDFILE" "$DROPBEAR_RUN_DIR"/*.tmp 2>/dev/null || true
+}
+
+stop_children() {
+    [ -n "$dropbear_pid" ] && kill -TERM "$dropbear_pid" 2>/dev/null || true
+    [ -n "$serial_supervisor_pid" ] && kill -TERM "$serial_supervisor_pid" 2>/dev/null || true
+}
+
+serial_supervisor() {
+    serial_shell_pid=
+    serial_stop=0
+    trap 'serial_stop=1; [ -n "${serial_shell_pid:-}" ] && kill -TERM "$serial_shell_pid" 2>/dev/null || true' TERM INT HUP QUIT
+    while :; do
+        log "starting BusyBox root serial shell on /dev/hvc0"
+        /bin/setsid /bin/sh -c 'exec /bin/cttyhack /bin/busybox ash -i </dev/hvc0 >/dev/hvc0 2>&1' &
+        serial_shell_pid=$!
+        if wait "$serial_shell_pid"; then serial_status=0; else serial_status=$?; fi
+        serial_shell_pid=
+        [ "$serial_stop" -eq 1 ] && exit 0
+        log "serial shell exited with status $serial_status; restarting"
+    done
+}
+
 trap cleanup EXIT
+trap 'stopping=1; log "forwarding TERM to supervised children"; stop_children' TERM INT HUP QUIT
 
-# --- Validate inputs -----------------------------------------------------------
+[ -e /dev/hvc0 ] && serial_available=1
 
-[ -n "${SSH_AUTHORIZED_KEYS:-}" ] || die "SSH_AUTHORIZED_KEYS not set (pass via secrets in external config)"
-
-# Sanity-check: every non-empty line must look like an SSH public key.
-# Uses here-doc (not pipe) so die() exits the main shell, not a subshell.
 while IFS= read -r line; do
     [ -z "$line" ] && continue
     case "$line" in
-        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*|sk-ssh-*|ssh-dss\ *) ;;
-        \#*) ;;  # allow comments
-        *) die "SSH_AUTHORIZED_KEYS contains invalid line: ${line%% *}..." ;;
+        \#*)
+            continue
+            ;;
+        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-ssh-ed25519@openssh.com\ *|sk-ecdsa-sha2-nistp256@openssh.com\ *)
+            authorized_keys_present=1
+            ;;
+        *)
+            die "SSH_AUTHORIZED_KEYS contains invalid line: ${line%% *}..."
+            ;;
     esac
 done <<EOF
-$SSH_AUTHORIZED_KEYS
+${SSH_AUTHORIZED_KEYS:-}
 EOF
 
-# --- Layout -------------------------------------------------------------------
-#   /mnt/ramdisk/dropbear/bin/       - static binaries and toolbox wrappers
-#   /mnt/ramdisk/dropbear/etc/       - host key
-#   /root/.ssh/                      - authorized_keys tmpfs
+[ "$authorized_keys_present" -eq 1 ] || [ "$serial_available" -eq 1 ] || die "SSH_AUTHORIZED_KEYS is empty and /dev/hvc0 is unavailable"
 
-BASE=/mnt/ramdisk/dropbear
+log "setting up toolbox state"
+mkdir -p "$DROPBEAR_RUN_DIR" "$ROOT_HOME" /tmp
+chmod 700 "$DROPBEAR_RUN_DIR" "$ROOT_HOME"
+[ -f /etc/tinfoil-root-profile ] && [ ! -f "$ROOT_HOME/.profile" ] && cp /etc/tinfoil-root-profile "$ROOT_HOME/.profile" && chmod 600 "$ROOT_HOME/.profile"
 
-# 1. Directory structure
-log "setting up toolbox tmpfs"
-mkdir -p "$BASE/bin" "$BASE/etc" /root/.ssh
-
-# 2. Copy static binaries (no shared libraries needed)
-log "copying static binaries to toolbox tmpfs"
-cp /usr/local/bin/dropbear \
-   /usr/local/bin/dropbearkey \
-   /usr/local/bin/dropbearconvert \
-   /usr/local/bin/scp \
-   /usr/local/bin/sftp-server \
-   "$BASE/bin/"
-chmod 755 "$BASE/bin/"*
-
-cat > "$BASE/bin/docker" <<'EOF'
-#!/bin/sh
-exec /usr/local/bin/docker -H unix:///host/run/docker.sock "$@"
-EOF
-chmod 755 "$BASE/bin/docker"
-
-# 3. Host key setup
-#    Accepts OpenSSH PEM format (native output of ssh-keygen / Go crypto/ssh).
-#    Converted to Dropbear format at install time via dropbearconvert.
-#    If not provided, generates an ephemeral key (changes every boot).
-HOST_KEY="$BASE/etc/dropbear_ed25519_host_key"
 if [ -n "${SSH_HOST_KEY:-}" ]; then
     case "$SSH_HOST_KEY" in
         "-----BEGIN OPENSSH PRIVATE KEY-----"*)
             log "converting OpenSSH host key to Dropbear format"
-            printf '%s\n' "$SSH_HOST_KEY" > "$BASE/etc/hostkey.pem"
-            chmod 600 "$BASE/etc/hostkey.pem"
-            "$BASE/bin/dropbearconvert" openssh dropbear "$BASE/etc/hostkey.pem" "$HOST_KEY" \
-                || die "dropbearconvert failed - is SSH_HOST_KEY a valid OpenSSH ed25519 private key?"
+            printf '%s\n' "$SSH_HOST_KEY" > "$HOST_KEY_PEM"
+            chmod 600 "$HOST_KEY_PEM"
+            /usr/local/bin/dropbearconvert openssh dropbear "$HOST_KEY_PEM" "$HOST_KEY" || {
+                rm -f "$HOST_KEY_PEM"
+                die "dropbearconvert failed - is SSH_HOST_KEY a valid OpenSSH ed25519 private key?"
+            }
+            rm -f "$HOST_KEY_PEM"
+            chmod 600 "$HOST_KEY"
             ;;
         *)
             die "SSH_HOST_KEY must be an OpenSSH PEM private key (-----BEGIN OPENSSH PRIVATE KEY-----). Generate with: ssh-keygen -t ed25519 -f host_key -N ''"
             ;;
     esac
-    chmod 600 "$HOST_KEY"
 else
     log "generating ephemeral host key (set SSH_HOST_KEY secret for stable identity)"
-    "$BASE/bin/dropbearkey" -t ed25519 -f "$HOST_KEY"
+    /usr/local/bin/dropbearkey -t ed25519 -f "$HOST_KEY"
 fi
 
-# 4. Write authorized keys and bind mount over /root/.ssh
-log "writing authorized keys"
-printf '%s\n' "$SSH_AUTHORIZED_KEYS" > /root/.ssh/authorized_keys
-chmod 700 /root/.ssh
-chmod 600 /root/.ssh/authorized_keys
-cat > /root/.profile <<'EOF'
-export DOCKER_HOST=unix:///host/run/docker.sock
-export PATH=/mnt/ramdisk/dropbear/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-cd /host/root 2>/dev/null || cd /
-EOF
-chmod 600 /root/.profile
+if [ "$authorized_keys_present" -eq 1 ]; then
+    mkdir -p "$ROOT_HOME/.ssh"
+    chmod 700 "$ROOT_HOME/.ssh"
+    printf '%s\n' "$SSH_AUTHORIZED_KEYS" > "$AUTHORIZED_KEYS_FILE"
+    chmod 600 "$AUTHORIZED_KEYS_FILE"
+else
+    rm -f "$AUTHORIZED_KEYS_FILE" 2>/dev/null || true
+    log "serial console is enabled; SSH public keys are optional for this boot"
+fi
 
-# 5. Start Dropbear in the foreground. The container is the supervisor.
-SSH_PORT="${SSH_PORT:-22}"
-case "$SSH_PORT" in
-    ''|*[!0-9]*)
-        die "SSH_PORT must be numeric"
-        ;;
-esac
-log "starting dropbear toolbox on port $SSH_PORT"
-exec "$BASE/bin/dropbear" -F -E -p "$SSH_PORT" -P "$BASE/dropbear.pid" -r "$HOST_KEY" -s -g -j -k
+export DOCKER_HOST=unix:///var/run/docker.sock
+if [ "$serial_available" -eq 1 ]; then
+    serial_supervisor &
+    serial_supervisor_pid=$!
+    printf '%s\n' "$serial_supervisor_pid" > "$SERIAL_PIDFILE"
+fi
+
+log "starting dropbear toolbox on port 2222"
+/usr/local/bin/dropbear -F -E -p 2222 -P "$DROPBEAR_PIDFILE" -r "$HOST_KEY" -b /etc/motd -s -g -j -k &
+dropbear_pid=$!
+
+while :; do
+    if [ -n "$dropbear_pid" ] && ! kill -0 "$dropbear_pid" 2>/dev/null; then
+        if wait "$dropbear_pid"; then dropbear_status=0; else dropbear_status=$?; fi
+        dropbear_pid=
+        [ "$stopping" -eq 1 ] && break
+        log "dropbear exited with status $dropbear_status"
+        stop_children
+        [ -n "$serial_supervisor_pid" ] && wait "$serial_supervisor_pid" 2>/dev/null || true
+        exit 1
+    fi
+    if [ -n "$serial_supervisor_pid" ] && ! kill -0 "$serial_supervisor_pid" 2>/dev/null; then
+        if wait "$serial_supervisor_pid"; then serial_status=0; else serial_status=$?; fi
+        serial_supervisor_pid=
+        [ "$stopping" -eq 1 ] && break
+        log "serial supervisor exited with status $serial_status; restarting"
+        serial_supervisor &
+        serial_supervisor_pid=$!
+        printf '%s\n' "$serial_supervisor_pid" > "$SERIAL_PIDFILE"
+    fi
+    [ "$stopping" -eq 1 ] && [ -z "$dropbear_pid" ] && [ -z "$serial_supervisor_pid" ] && break
+    sleep 1
+done
