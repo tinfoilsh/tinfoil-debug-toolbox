@@ -67,7 +67,7 @@ RUN cd openssh-${OPENSSH_VERSION} && \
 # -------------------------------------------------------------------
 COPY entrypoint.sh /rootfs/entrypoint.sh
 COPY healthcheck.sh /rootfs/healthcheck.sh
-COPY tinfoil-help tinfoil-containers tinfoil-logs tinfoil-exec tinfoil-nvidia-smi /rootfs/usr/local/bin/
+COPY toolbox-shell tinfoil-help tinfoil-containers tinfoil-logs tinfoil-exec tinfoil-nvidia-smi /rootfs/usr/local/bin/
 
 RUN mkdir -p \
         /rootfs/bin \
@@ -85,13 +85,13 @@ RUN mkdir -p \
     && chmod 0700 /rootfs/run/dropbear /rootfs/run/root \
     && chmod 1777 /rootfs/tmp \
     && printf '%s\n' \
-        'root:x:0:0:root:/run/root:/bin/sh' \
+        'root:x:0:0:root:/run/root:/usr/local/bin/toolbox-shell' \
         > /rootfs/etc/passwd \
     && printf '%s\n' \
         'root:x:0:' \
         > /rootfs/etc/group \
     && printf '%s\n' \
-        '/bin/sh' \
+        '/usr/local/bin/toolbox-shell' \
         > /rootfs/etc/shells \
     && printf '%s\n' \
         'Welcome to the Tinfoil debug toolbox.' \

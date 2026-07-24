@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+export HOME=/run/root
+export DOCKER_HOST=unix:///var/run/docker.sock
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cd "$HOME"
+
+if [ "$#" -gt 0 ]; then
+    exec /bin/busybox ash "$@"
+fi
+
+exec /bin/busybox ash -l
