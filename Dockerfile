@@ -3,7 +3,7 @@
 FROM ubuntu:noble@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential wget ca-certificates bzip2 xz-utils patch \
+    build-essential wget ca-certificates bzip2 xz-utils patch golang-go \
     zlib1g-dev libssl-dev
 
 # -------------------------------------------------------------------
@@ -100,6 +100,8 @@ COPY toolbox-shell /rootfs/usr/local/bin/toolbox-shell
 COPY vim /rootfs/usr/local/bin/vim
 COPY home/README.md home/AGENTS.md /rootfs/usr/share/tinfoil-debug-toolbox/
 COPY block-winch.c /tmp/block-winch.c
+COPY go.mod /tmp/tindbg/go.mod
+COPY cmd/tindbg /tmp/tindbg/cmd/tindbg
 
 RUN mkdir -p \
         /rootfs/bin \
@@ -114,6 +116,7 @@ RUN mkdir -p \
     && cp /opt/bin/busybox /rootfs/bin/busybox \
     && for applet in $(/opt/bin/busybox --list); do [ "$applet" = busybox ] && continue; ln -sf busybox "/rootfs/bin/${applet}"; done \
     && cc -static -Os -s -o /rootfs/usr/local/bin/block-winch /tmp/block-winch.c \
+    && cd /tmp/tindbg && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /rootfs/usr/local/bin/tindbg ./cmd/tindbg \
     && cp /opt/bin/dropbear /opt/bin/dropbearkey /opt/bin/dropbearconvert /opt/bin/scp /opt/bin/sftp-server /opt/bin/docker /rootfs/usr/local/bin/ \
     && chmod 0755 /rootfs/entrypoint.sh /rootfs/healthcheck.sh /rootfs/usr/local/bin/* /rootfs/bin/busybox \
     && chmod 0700 /rootfs/run/dropbear /rootfs/run/root \

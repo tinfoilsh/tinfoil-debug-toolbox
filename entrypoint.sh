@@ -103,6 +103,15 @@ for document in README.md AGENTS.md; do
     [ -f "$ROOT_HOME/$document" ] || cp "$TOOLBOX_DOCS/$document" "$ROOT_HOME/$document"
     chmod 600 "$ROOT_HOME/$document"
 done
+if [ -S /run/tinfoil/containers.sock ] && [ ! -f "$ROOT_HOME/tinfoil-config.debug.yml" ]; then
+    if /usr/local/bin/tindbg template > "$ROOT_HOME/tinfoil-config.debug.yml.tmp"; then
+        mv "$ROOT_HOME/tinfoil-config.debug.yml.tmp" "$ROOT_HOME/tinfoil-config.debug.yml"
+        chmod 600 "$ROOT_HOME/tinfoil-config.debug.yml"
+    else
+        rm -f "$ROOT_HOME/tinfoil-config.debug.yml.tmp"
+        log "warning: manager config template is not available yet"
+    fi
+fi
 
 if [ -n "${SSH_HOST_KEY:-}" ]; then
     case "$SSH_HOST_KEY" in

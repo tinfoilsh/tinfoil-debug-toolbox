@@ -6,6 +6,22 @@ on the CVM host root filesystem.
 Both `vi` and `vim` are available. They use BusyBox `vi`; full Vim is not
 installed in this scratch image.
 
+## Iterate on the runtime configuration
+
+When the manager socket is available, the toolbox creates
+`~/tinfoil-config.debug.yml`. Edit it and run:
+
+```sh
+tindbg check
+tindbg apply
+tindbg status
+tindbg reset
+```
+
+Use `tindbg ps`, `inspect`, `logs`, `exec`, and `run` for the common Docker
+debugging workflows. The Docker socket remains available for commands not yet
+covered by `tindbg`.
+
 The toolbox has the Docker CLI and access to `/var/run/docker.sock`. That socket
 grants control over the workload containers in this debug CVM. Commands such as
 `docker exec`, `docker stop`, and `docker rm` directly affect the deployment.

@@ -5,11 +5,19 @@ launched in user-debug mode.
 
 Customer SSH and the optional operator console both land inside this toolbox
 container, not inside the stripped CVM host rootfs. The toolbox contains
-Dropbear, a quiet static BusyBox `/bin/sh`, and the Docker CLI.
+Dropbear, a quiet static BusyBox `/bin/sh`, the Docker CLI, and `tindbg`.
 
 Useful commands:
 
 ```sh
+tindbg check
+tindbg apply
+tindbg status
+tindbg reset
+tindbg ps
+tindbg logs <container>
+tindbg exec -it <container> sh
+
 docker pull <image>
 docker run ...
 docker ps
