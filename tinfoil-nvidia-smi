@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-
-if [ "$#" -ne 1 ]; then
-    echo "usage: tinfoil-nvidia-smi <container>" >&2
-    exit 2
-fi
-
-exec docker exec "$1" nvidia-smi

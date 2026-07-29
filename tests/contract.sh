@@ -242,16 +242,81 @@ wait_for_pattern 'tinfoil:~#' "$hvc1_output"
 
 ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$scratch/customer-key" -p "$port" root@127.0.0.1 \
-    'printf "SSH_ENV|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$(command -v tinfoil-help)"' \
+    'printf "SSH_ENV|%s|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$([ -f README.md ] && echo yes || echo no)" "$([ -f AGENTS.md ] && echo yes || echo no)" "$(command -v vi)" "$(command -v vim)"' \
     > "$scratch/ssh-env.out"
-grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|/usr/local/bin/tinfoil-help' "$scratch/ssh-env.out"
-! grep -Fq 'Welcome to the Tinfoil debug toolbox.' "$scratch/ssh-env.out"
+grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|yes|yes|vi|/usr/local/bin/vim' "$scratch/ssh-env.out"
+
+python3 - "$scratch/customer-key" "$port" <<'PY'
+import fcntl
+import os
+import pty
+import select
+import struct
+import sys
+import termios
+import time
+
+key, port = sys.argv[1:]
+argv = [
+    "ssh", "-tt", "-i", key, "-p", port,
+    "-o", "BatchMode=yes",
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "root@127.0.0.1",
+]
+pid, terminal = pty.fork()
+if pid == 0:
+    os.execvp(argv[0], argv)
+
+def resize(rows, columns):
+    size = struct.pack("HHHH", rows, columns, 0, 0)
+    fcntl.ioctl(terminal, termios.TIOCSWINSZ, size)
+
+def read_for(seconds):
+    output = bytearray()
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        readable, _, _ = select.select([terminal], [], [], 0.05)
+        if not readable:
+            continue
+        try:
+            data = os.read(terminal, 65536)
+        except OSError:
+            break
+        if not data:
+            break
+        output.extend(data)
+    return bytes(output)
+
+resize(30, 100)
+initial = read_for(2)
+if b"tinfoil:~#" not in initial:
+    raise SystemExit(f"SSH prompt did not appear: {initial!r}")
+if b"Tinfoil Containers Debug Shell (BusyBox v1.36.1 - ash)" not in initial:
+    raise SystemExit(f"Tinfoil shell banner did not appear: {initial!r}")
+if b"built-in shell (ash)" in initial or b"Enter 'help'" in initial:
+    raise SystemExit(f"generic BusyBox shell banner appeared: {initial!r}")
+for index in range(12):
+    resize(30 + index % 2, 80 + index)
+    time.sleep(0.05)
+after_resize = read_for(1)
+os.write(terminal, b"exit\r")
+read_for(1)
+try:
+    os.waitpid(pid, 0)
+except ChildProcessError:
+    pass
+if b"tinfoil:~#" in after_resize:
+    raise SystemExit(f"SSH resize redrew the prompt: {after_resize!r}")
+PY
 
 printf '%s\r' \
-    'printf "CONSOLE_ENV|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$(command -v tinfoil-help)" "$([ -t 0 ] && echo yes || echo no)" "$(if exec 3<>/dev/tty; then [ -t 3 ] && echo yes || echo no; else echo no; fi)"' \
+    'printf "CONSOLE_ENV|%s|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$([ -f README.md ] && echo yes || echo no)" "$([ -f AGENTS.md ] && echo yes || echo no)" "$([ -t 0 ] && echo yes || echo no)" "$(if exec 3<>/dev/tty; then [ -t 3 ] && echo yes || echo no; else echo no; fi)"' \
     > "$hvc1_input"
-wait_for_pattern 'CONSOLE_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|/usr/local/bin/tinfoil-help|yes|yes' "$hvc1_output"
-! grep -Fq 'Welcome to the Tinfoil debug toolbox.' "$hvc1_output"
+wait_for_pattern 'CONSOLE_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|yes|yes|yes|yes' "$hvc1_output"
+grep -Fq 'Tinfoil Containers Debug Shell (BusyBox v1.36.1 - ash)' "$hvc1_output"
+! grep -Fq 'built-in shell (ash)' "$hvc1_output"
+! grep -Fq "Enter 'help'" "$hvc1_output"
 docker exec "$cid" /healthcheck.sh
 docker stop -t 2 "$cid" >/dev/null
 

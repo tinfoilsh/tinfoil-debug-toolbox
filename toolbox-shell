@@ -10,4 +10,5 @@ if [ "$#" -gt 0 ]; then
     exec /bin/busybox ash "$@"
 fi
 
-exec /bin/busybox ash -l
+printf '\nTinfoil Containers Debug Shell (BusyBox v1.36.1 - ash)\nCheck README.md and AGENTS.md for more information.\n\n'
+exec /usr/local/bin/block-winch /bin/busybox ash -l

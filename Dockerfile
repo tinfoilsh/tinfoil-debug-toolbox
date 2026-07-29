@@ -3,8 +3,37 @@
 FROM ubuntu:noble@sha256:cd1dba651b3080c3686ecf4e3c4220f026b521fb76978881737d24f200828b2b AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential wget ca-certificates bzip2 busybox-static \
+    build-essential wget ca-certificates bzip2 xz-utils patch \
     zlib1g-dev libssl-dev
+
+# -------------------------------------------------------------------
+# Build a static BusyBox without its generic interactive-shell banner.
+# -------------------------------------------------------------------
+ARG BUSYBOX_VERSION=1.36.1
+ARG BUSYBOX_SHA256=b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314
+ARG BUSYBOX_UBUNTU_VERSION=1.36.1-6ubuntu3.1
+ARG BUSYBOX_UBUNTU_SHA256=1c7d785cf1e1d5d09ddc22fe755e14327fb3799878a5d840fc611044ff05f022
+
+COPY busybox-static.config /tmp/busybox-static.config
+
+RUN wget -q https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2 && \
+    echo "${BUSYBOX_SHA256}  busybox-${BUSYBOX_VERSION}.tar.bz2" | sha256sum -c - && \
+    wget -q https://archive.ubuntu.com/ubuntu/pool/main/b/busybox/busybox_${BUSYBOX_UBUNTU_VERSION}.debian.tar.xz && \
+    echo "${BUSYBOX_UBUNTU_SHA256}  busybox_${BUSYBOX_UBUNTU_VERSION}.debian.tar.xz" | sha256sum -c - && \
+    tar xjf busybox-${BUSYBOX_VERSION}.tar.bz2 && \
+    tar xJf busybox_${BUSYBOX_UBUNTU_VERSION}.debian.tar.xz -C busybox-${BUSYBOX_VERSION} && \
+    cd busybox-${BUSYBOX_VERSION} && \
+    while read -r patch_file; do \
+        case "$patch_file" in ''|'#'*) continue ;; esac; \
+        patch -p1 < "debian/patches/$patch_file"; \
+    done < debian/patches/series
+
+RUN cd busybox-${BUSYBOX_VERSION} && \
+    cp /tmp/busybox-static.config .config && \
+    yes '' | make oldconfig >/dev/null && \
+    make BB_EXTRA_VERSION="Ubuntu 1:${BUSYBOX_UBUNTU_VERSION}" -j$(nproc) >/dev/null && \
+    strip busybox && \
+    mkdir -p /opt/bin && cp busybox /opt/bin/busybox
 
 # -------------------------------------------------------------------
 # Build Dropbear from source (static)
@@ -67,7 +96,10 @@ RUN cd openssh-${OPENSSH_VERSION} && \
 # -------------------------------------------------------------------
 COPY entrypoint.sh /rootfs/entrypoint.sh
 COPY healthcheck.sh /rootfs/healthcheck.sh
-COPY toolbox-shell tinfoil-help tinfoil-containers tinfoil-logs tinfoil-exec tinfoil-nvidia-smi /rootfs/usr/local/bin/
+COPY toolbox-shell /rootfs/usr/local/bin/toolbox-shell
+COPY vim /rootfs/usr/local/bin/vim
+COPY home/README.md home/AGENTS.md /rootfs/usr/share/tinfoil-debug-toolbox/
+COPY block-winch.c /tmp/block-winch.c
 
 RUN mkdir -p \
         /rootfs/bin \
@@ -77,9 +109,11 @@ RUN mkdir -p \
         /rootfs/run/root \
         /rootfs/tmp \
         /rootfs/usr/local/bin \
+        /rootfs/usr/share/tinfoil-debug-toolbox \
         /rootfs/var/run \
-    && cp /bin/busybox /rootfs/bin/busybox \
-    && for applet in $(/bin/busybox --list); do [ "$applet" = busybox ] && continue; ln -sf busybox "/rootfs/bin/${applet}"; done \
+    && cp /opt/bin/busybox /rootfs/bin/busybox \
+    && for applet in $(/opt/bin/busybox --list); do [ "$applet" = busybox ] && continue; ln -sf busybox "/rootfs/bin/${applet}"; done \
+    && cc -static -Os -s -o /rootfs/usr/local/bin/block-winch /tmp/block-winch.c \
     && cp /opt/bin/dropbear /opt/bin/dropbearkey /opt/bin/dropbearconvert /opt/bin/scp /opt/bin/sftp-server /opt/bin/docker /rootfs/usr/local/bin/ \
     && chmod 0755 /rootfs/entrypoint.sh /rootfs/healthcheck.sh /rootfs/usr/local/bin/* /rootfs/bin/busybox \
     && chmod 0700 /rootfs/run/dropbear /rootfs/run/root \

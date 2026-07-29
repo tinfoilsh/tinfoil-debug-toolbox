@@ -11,6 +11,7 @@ CONSOLE_DEVICE=/dev/hvc1
 CONSOLE_PIDFILE=/run/tinfoil-toolbox-console.pid
 AUTHORIZED_KEYS_FILE="$ROOT_HOME/.ssh/authorized_keys"
 TOOLBOX_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TOOLBOX_DOCS=/usr/share/tinfoil-debug-toolbox
 
 dropbear_pid=
 console_supervisor_pid=
@@ -98,6 +99,10 @@ log "setting up toolbox state"
 mkdir -p "$DROPBEAR_RUN_DIR" "$ROOT_HOME" /tmp
 chmod 700 "$DROPBEAR_RUN_DIR" "$ROOT_HOME"
 [ -f /etc/tinfoil-root-profile ] && [ ! -f "$ROOT_HOME/.profile" ] && cp /etc/tinfoil-root-profile "$ROOT_HOME/.profile" && chmod 600 "$ROOT_HOME/.profile"
+for document in README.md AGENTS.md; do
+    [ -f "$ROOT_HOME/$document" ] || cp "$TOOLBOX_DOCS/$document" "$ROOT_HOME/$document"
+    chmod 600 "$ROOT_HOME/$document"
+done
 
 if [ -n "${SSH_HOST_KEY:-}" ]; then
     case "$SSH_HOST_KEY" in

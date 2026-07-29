@@ -5,8 +5,7 @@ launched in user-debug mode.
 
 Customer SSH and the optional operator console both land inside this toolbox
 container, not inside the stripped CVM host rootfs. The toolbox contains
-Dropbear, BusyBox `/bin/sh`, the Docker CLI, and a few small helpers for
-inspecting workload containers.
+Dropbear, a quiet static BusyBox `/bin/sh`, and the Docker CLI.
 
 Useful commands:
 
@@ -18,8 +17,12 @@ docker logs <container>
 docker inspect <container>
 docker exec -it <container> sh
 docker exec <container> nvidia-smi
-tinfoil-help
 ```
+
+Each session starts in `/run/root` with `README.md` for humans and `AGENTS.md`
+for coding agents. They explain workload discovery, container networking,
+disposable diagnostic containers, the included `vi`/`vim` editor, and the
+minimal NVIDIA CDI smoke command.
 
 The toolbox talks to Docker through `/var/run/docker.sock`. That is a powerful
 debug capability: anyone with SSH access can control workload containers inside
@@ -33,7 +36,9 @@ capabilities are trimmed, the documented runtime requirement is `SETUID` and
 
 The image assumes a read-only root filesystem with writable tmpfs mounts for
 `/run` and `/tmp`. Root's home directory lives at `/run/root`, so host keys,
-authorized keys, pidfiles, and shell history stay in tmpfs.
+authorized keys, pidfiles, shell history, and the session documentation stay in
+tmpfs. The tmpfs mounts are `noexec`; install additional packages in a separate
+diagnostic container rather than modifying the toolbox.
 
 If the exact `/dev/hvc1` device is present, PID 1 also keeps an unauthenticated
 BusyBox root shell attached to that fixed operator console. `/dev/hvc0` is
@@ -42,8 +47,8 @@ compile-time debug-image shell.
 
 The toolbox validates that `/dev/hvc1` is both a character device and a usable
 terminal. A present but invalid device fails startup clearly. The console
-shares SSH's `/run/root` home and working directory, Docker environment,
-`PATH`, and toolbox helpers. Ordinary logout restarts the console shell, while
+shares SSH's `/run/root` home and working directory, Docker environment, and
+`PATH`. Ordinary logout restarts the console shell, while
 repeated immediate exits or loss of its supervisor fail the container closed.
 
 When `/dev/hvc1` is available, `SSH_AUTHORIZED_KEYS` may be empty because the
