@@ -98,13 +98,13 @@ RUN mkdir -p \
         'export DOCKER_HOST=unix:///var/run/docker.sock' \
         'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         'export HISTFILE=/tmp/.ash_history' \
-        'export PS1="tinfoil-debug-toolbox:\w# "' \
+        'export PS1="tinfoil:\w# "' \
         > /rootfs/etc/profile \
     && printf '%s\n' \
         'export DOCKER_HOST=unix:///var/run/docker.sock' \
         'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         'export HISTFILE=/tmp/.ash_history' \
-        'export PS1="tinfoil-debug-toolbox:\w# "' \
+        'export PS1="tinfoil:\w# "' \
         > /rootfs/etc/tinfoil-root-profile
 
 # -------------------------------------------------------------------

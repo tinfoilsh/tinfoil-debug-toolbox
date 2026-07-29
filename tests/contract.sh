@@ -237,6 +237,8 @@ done
     echo "timed out waiting for customer SSH" >&2
     exit 1
 }
+wait_for_pattern 'tinfoil:~#' "$hvc1_output"
+! grep -Fq 'tinfoil-debug-toolbox:' "$hvc1_output"
 
 ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$scratch/customer-key" -p "$port" root@127.0.0.1 \
