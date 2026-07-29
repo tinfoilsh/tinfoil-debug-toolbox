@@ -143,7 +143,7 @@ if [ "$console_available" -eq 1 ]; then
 fi
 
 log "starting dropbear toolbox on port 2222"
-/usr/local/bin/dropbear -F -E -p 2222 -P "$DROPBEAR_PIDFILE" -r "$HOST_KEY" -b /etc/motd -s -g -j -k &
+/usr/local/bin/dropbear -F -E -p 2222 -P "$DROPBEAR_PIDFILE" -r "$HOST_KEY" -s -g -j -k &
 dropbear_pid=$!
 
 while :; do

@@ -243,11 +243,13 @@ ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/de
     'printf "SSH_ENV|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$(command -v tinfoil-help)"' \
     > "$scratch/ssh-env.out"
 grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|/usr/local/bin/tinfoil-help' "$scratch/ssh-env.out"
+! grep -Fq 'Welcome to the Tinfoil debug toolbox.' "$scratch/ssh-env.out"
 
 printf '%s\r' \
     'printf "CONSOLE_ENV|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$(command -v tinfoil-help)" "$([ -t 0 ] && echo yes || echo no)" "$(if exec 3<>/dev/tty; then [ -t 3 ] && echo yes || echo no; else echo no; fi)"' \
     > "$hvc1_input"
 wait_for_pattern 'CONSOLE_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|/usr/local/bin/tinfoil-help|yes|yes' "$hvc1_output"
+! grep -Fq 'Welcome to the Tinfoil debug toolbox.' "$hvc1_output"
 docker exec "$cid" /healthcheck.sh
 docker stop -t 2 "$cid" >/dev/null
 

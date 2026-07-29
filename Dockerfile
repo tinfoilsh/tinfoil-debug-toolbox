@@ -93,13 +93,6 @@ RUN mkdir -p \
     && printf '%s\n' \
         '/usr/local/bin/toolbox-shell' \
         > /rootfs/etc/shells \
-    && printf '%s\n' \
-        'Welcome to the Tinfoil debug toolbox.' \
-        '' \
-        'This shell is inside the measured toolbox container, not the CVM host rootfs.' \
-        'Docker socket access is enabled for inspecting and debugging workload containers.' \
-        'Run tinfoil-help for the common commands.' \
-        > /rootfs/etc/motd \
     && ln -sf /run/root /rootfs/root \
     && printf '%s\n' \
         'export DOCKER_HOST=unix:///var/run/docker.sock' \
@@ -112,7 +105,6 @@ RUN mkdir -p \
         'export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' \
         'export HISTFILE=/tmp/.ash_history' \
         'export PS1="tinfoil-debug-toolbox:\w# "' \
-        '[ -f /etc/motd ] && cat /etc/motd' \
         > /rootfs/etc/tinfoil-root-profile
 
 # -------------------------------------------------------------------
