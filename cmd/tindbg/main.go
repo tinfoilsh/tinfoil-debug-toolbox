@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -12,8 +13,10 @@ import (
 )
 
 const (
-	defaultSocket = "/run/tinfoil/containers.sock"
-	defaultConfig = "/run/root/tinfoil-config.debug.yml"
+	defaultSocket       = "/run/tinfoil/containers.sock"
+	defaultConfig       = "/run/root/tinfoil-config.debug.yml"
+	defaultPublicConfig = "/tinfoil/config.yml"
+	defaultStatus       = "/tinfoil/container-status.json"
 )
 
 func main() {
@@ -30,7 +33,7 @@ func main() {
 	case "boot":
 		err = configRequest("/v1/boot", args)
 	case "status":
-		err = request(http.MethodGet, "/v1/status", "", os.Stdout)
+		err = status(os.Stdout)
 	case "ps":
 		err = docker(append([]string{"ps"}, args...))
 	case "inspect":
@@ -68,7 +71,21 @@ func template(args []string) error {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := request(http.MethodGet, "/v1/template", "", temporary); err != nil {
+	sourcePath := os.Getenv("TINFOIL_PUBLIC_CONFIG")
+	if sourcePath == "" {
+		sourcePath = defaultPublicConfig
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		temporary.Close()
+		return err
+	}
+	if _, err := io.Copy(temporary, source); err != nil {
+		source.Close()
+		temporary.Close()
+		return err
+	}
+	if err := source.Close(); err != nil {
 		temporary.Close()
 		return err
 	}
@@ -84,6 +101,23 @@ func template(args []string) error {
 	}
 	fmt.Println(configPath)
 	return nil
+}
+
+func status(output io.Writer) error {
+	path := os.Getenv("TINFOIL_STATUS_PATH")
+	if path == "" {
+		path = defaultStatus
+	}
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("runtime status is not available yet")
+	}
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(output, file)
+	return err
 }
 
 func configRequest(path string, args []string) error {
@@ -149,7 +183,7 @@ func usage() {
 Runtime configuration:
   template [config-file]      restore the verified config as an editable file
   boot [config-file]          replace and start the debug runtime
-  status                      show manager state
+  status                      show published container status
 
 Reset to the verified boot config with: tindbg template && tindbg boot
 

@@ -103,9 +103,9 @@ for document in README.md AGENTS.md; do
     [ -f "$ROOT_HOME/$document" ] || cp "$TOOLBOX_DOCS/$document" "$ROOT_HOME/$document"
     chmod 600 "$ROOT_HOME/$document"
 done
-if [ -S /run/tinfoil/containers.sock ] && [ ! -f "$ROOT_HOME/tinfoil-config.debug.yml" ]; then
+if [ -f /tinfoil/config.yml ] && [ ! -f "$ROOT_HOME/tinfoil-config.debug.yml" ]; then
     if ! /usr/local/bin/tindbg template >/dev/null; then
-        log "warning: manager config template is not available yet"
+        log "warning: verified config template is not available yet"
     fi
 fi
 

@@ -36,6 +36,8 @@ Edit `/run/root/tinfoil-config.debug.yml`, then run `tindbg boot`. This performs
 a clean replacement boot: existing managed workloads are removed, runtime
 artifacts are regenerated, and shim/egress are restarted by PID 1. To restore
 the verified boot configuration, run `tindbg template && tindbg boot`.
+`tindbg template` reads `/tinfoil/config.yml`, and `tindbg status` reads
+`/tinfoil/container-status.json`; only `tindbg boot` uses the manager socket.
 
 ```sh
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'

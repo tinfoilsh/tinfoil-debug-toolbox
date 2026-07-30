@@ -8,14 +8,17 @@ installed in this scratch image.
 
 ## Iterate on the runtime configuration
 
-When the manager socket is available, the toolbox creates
-`~/tinfoil-config.debug.yml`. Edit it and run:
+The toolbox copies the verified read-only `/tinfoil/config.yml` to
+`~/tinfoil-config.debug.yml` on first start. Edit it and run:
 
 ```sh
 tindbg boot
 tindbg status
 tindbg template && tindbg boot  # restore verified boot config
 ```
+
+`tindbg status` reads the atomically published
+`/tinfoil/container-status.json`; it does not call the runtime API.
 
 Use `tindbg ps`, `inspect`, `logs`, `exec`, and `run` for the common Docker
 debugging workflows. The Docker socket remains available for commands not yet

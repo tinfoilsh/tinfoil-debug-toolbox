@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,21 +17,56 @@ func TestRequestUsesManagerUnixSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/status" {
-			t.Fatalf("request = %s %s, want GET /v1/status", r.Method, r.URL.Path)
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/boot" {
+			t.Fatalf("request = %s %s, want POST /v1/boot", r.Method, r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"initialized":true}`))
+		w.WriteHeader(http.StatusNoContent)
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	t.Setenv("TINFOIL_CONTAINERS_SOCKET", socket)
 
 	var output strings.Builder
-	if err := request(http.MethodGet, "/v1/status", "", &output); err != nil {
+	if err := request(http.MethodPost, "/v1/boot", "", &output); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != `{"initialized":true}` {
+	if output.String() != "" {
 		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestTemplateReadsPublicConfig(t *testing.T) {
+	directory := t.TempDir()
+	source := filepath.Join(directory, "config.yml")
+	destination := filepath.Join(directory, "debug.yml")
+	if err := os.WriteFile(source, []byte("containers: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TINFOIL_PUBLIC_CONFIG", source)
+	if err := template([]string{destination}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "containers: []\n" {
+		t.Fatalf("template = %q", data)
+	}
+}
+
+func TestStatusReadsPublicStatus(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "container-status.json")
+	if err := os.WriteFile(path, []byte(`{"containers":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TINFOIL_STATUS_PATH", path)
+	var output strings.Builder
+	if err := status(&output); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != `{"containers":[]}` {
+		t.Fatalf("status = %q", output.String())
 	}
 }
 
