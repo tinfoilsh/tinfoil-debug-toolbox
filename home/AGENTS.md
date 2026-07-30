@@ -9,7 +9,7 @@
   `noexec`.
 - There is no supported package manager in this toolbox.
 - `vi` and `vim` both invoke the included BusyBox editor.
-- Prefer `tindbg` for runtime configuration, status, logs, exec, and disposable
+- Prefer `tindbg boot` for runtime configuration and `tindbg` aliases for status, logs, exec, and disposable
   containers. Direct Docker commands remain available as an escape hatch.
 - `DOCKER_HOST=unix:///var/run/docker.sock` grants control over workload
   containers in this debug CVM.
@@ -31,6 +31,11 @@
 - Prefer noninteractive commands that produce bounded output.
 
 ## Workload Discovery
+
+Edit `/run/root/tinfoil-config.debug.yml`, then run `tindbg boot`. This performs
+a clean replacement boot: existing managed workloads are removed, runtime
+artifacts are regenerated, and shim/egress are restarted by PID 1. To restore
+the verified boot configuration, run `tindbg template && tindbg boot`.
 
 ```sh
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'

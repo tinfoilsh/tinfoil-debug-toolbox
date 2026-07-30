@@ -47,7 +47,7 @@ func TestRequestReturnsManagerError(t *testing.T) {
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	t.Setenv("TINFOIL_CONTAINERS_SOCKET", socket)
 
-	err = request(http.MethodPost, "/v1/config/check", "", &strings.Builder{})
+	err = request(http.MethodPost, "/v1/boot", "", &strings.Builder{})
 	if err == nil || !strings.Contains(err.Error(), "400 Bad Request") || !strings.Contains(err.Error(), "invalid config") {
 		t.Fatalf("request() error = %v", err)
 	}

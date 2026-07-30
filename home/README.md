@@ -12,10 +12,9 @@ When the manager socket is available, the toolbox creates
 `~/tinfoil-config.debug.yml`. Edit it and run:
 
 ```sh
-tindbg check
-tindbg apply
+tindbg boot
 tindbg status
-tindbg reset
+tindbg template && tindbg boot  # restore verified boot config
 ```
 
 Use `tindbg ps`, `inspect`, `logs`, `exec`, and `run` for the common Docker

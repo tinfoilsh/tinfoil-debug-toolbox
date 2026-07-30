@@ -10,10 +10,9 @@ Dropbear, a quiet static BusyBox `/bin/sh`, the Docker CLI, and `tindbg`.
 Useful commands:
 
 ```sh
-tindbg check
-tindbg apply
+tindbg boot
 tindbg status
-tindbg reset
+tindbg template && tindbg boot  # restore verified boot config
 tindbg ps
 tindbg logs <container>
 tindbg exec -it <container> sh

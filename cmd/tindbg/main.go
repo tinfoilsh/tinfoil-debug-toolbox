@@ -26,15 +26,11 @@ func main() {
 	var err error
 	switch command {
 	case "template":
-		err = request(http.MethodGet, "/v1/config/template", "", os.Stdout)
-	case "check":
-		err = configRequest("/v1/config/check", args)
-	case "apply":
-		err = configRequest("/v1/config/apply", args)
+		err = template(args)
+	case "boot":
+		err = configRequest("/v1/boot", args)
 	case "status":
 		err = request(http.MethodGet, "/v1/status", "", os.Stdout)
-	case "reset":
-		err = request(http.MethodPost, "/v1/config/reset", "", os.Stdout)
 	case "ps":
 		err = docker(append([]string{"ps"}, args...))
 	case "inspect":
@@ -53,6 +49,41 @@ func main() {
 		fmt.Fprintf(os.Stderr, "tindbg: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func template(args []string) error {
+	configPath := defaultConfig
+	if len(args) > 1 {
+		return fmt.Errorf("usage: tindbg template [config-file]")
+	}
+	if len(args) == 1 {
+		configPath = args[0]
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(configPath), ".tinfoil-config-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := request(http.MethodGet, "/v1/template", "", temporary); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, configPath); err != nil {
+		return err
+	}
+	fmt.Println(configPath)
+	return nil
 }
 
 func configRequest(path string, args []string) error {
@@ -116,11 +147,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage: tindbg COMMAND [ARGS]
 
 Runtime configuration:
-  template                    print the current editable configuration
-  check [config-file]         validate and plan a configuration
-  apply [config-file]         apply a configuration
+  template [config-file]      restore the verified config as an editable file
+  boot [config-file]          replace and start the debug runtime
   status                      show manager state
-  reset                       restore the boot-time configuration
+
+Reset to the verified boot config with: tindbg template && tindbg boot
 
 Container debugging:
   ps [docker-ps-args]
