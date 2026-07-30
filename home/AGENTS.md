@@ -13,6 +13,8 @@
   containers. Direct Docker commands remain available as an escape hatch.
 - `DOCKER_HOST=unix:///var/run/docker.sock` grants control over workload
   containers in this debug CVM.
+- `tindbg ps`, `inspect`, `logs`, `exec`, and `run` directly invoke the Docker
+  CLI. Do not look for equivalent endpoints on `tinfoil-containers`.
 - `/dev/hvc1`, when present, is the operator toolbox console. Never use
   `/dev/hvc0`; it is reserved for CVM boot logging and the compile-time debug
   image shell.

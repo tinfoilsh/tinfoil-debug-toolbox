@@ -21,8 +21,9 @@ tindbg template && tindbg boot  # restore verified boot config
 `/tinfoil/container-status.json`; it does not call the runtime API.
 
 Use `tindbg ps`, `inspect`, `logs`, `exec`, and `run` for the common Docker
-debugging workflows. The Docker socket remains available for commands not yet
-covered by `tindbg`.
+debugging workflows. These are direct Docker CLI aliases over
+`/var/run/docker.sock`, not manager API operations. The Docker socket remains
+available for commands not covered by `tindbg`.
 
 The toolbox has the Docker CLI and access to `/var/run/docker.sock`. That socket
 grants control over the workload containers in this debug CVM. Commands such as

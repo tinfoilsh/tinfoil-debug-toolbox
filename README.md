@@ -26,6 +26,11 @@ docker exec -it <container> sh
 docker exec <container> nvidia-smi
 ```
 
+`tindbg ps`, `inspect`, `logs`, `exec`, and `run` are deliberately thin aliases
+for the included Docker CLI over `/var/run/docker.sock`. They do not add exec,
+TTY, resize, log-streaming, or diagnostic-container code to `tinfoil-containers`.
+Only `tindbg boot` calls the debug manager socket.
+
 Each session starts in `/run/root` with `README.md` for humans and `AGENTS.md`
 for coding agents. They explain workload discovery, container networking,
 disposable diagnostic containers, the included `vi`/`vim` editor, and the

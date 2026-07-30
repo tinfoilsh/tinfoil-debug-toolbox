@@ -187,7 +187,7 @@ Runtime configuration:
 
 Reset to the verified boot config with: tindbg template && tindbg boot
 
-Container debugging:
+Container debugging (direct Docker CLI over /var/run/docker.sock):
   ps [docker-ps-args]
   inspect CONTAINER
   logs [docker-logs-args] CONTAINER

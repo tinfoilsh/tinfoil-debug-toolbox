@@ -88,3 +88,26 @@ func TestRequestReturnsManagerError(t *testing.T) {
 		t.Fatalf("request() error = %v", err)
 	}
 }
+
+func TestDockerAliasesExecuteDockerCLI(t *testing.T) {
+	directory := t.TempDir()
+	argumentsPath := filepath.Join(directory, "arguments")
+	dockerPath := filepath.Join(directory, "docker")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$DOCKER_ARGUMENTS\"\n"
+	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("DOCKER_ARGUMENTS", argumentsPath)
+
+	if err := docker([]string{"exec", "-it", "workload", "sh"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(argumentsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "exec\n-it\nworkload\nsh\n" {
+		t.Fatalf("docker arguments = %q", data)
+	}
+}
