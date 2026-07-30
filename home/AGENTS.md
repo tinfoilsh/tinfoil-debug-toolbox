@@ -2,15 +2,19 @@
 
 ## Environment
 
-- You are inside the measured `tinfoil-ssh-installer` debug toolbox container,
+- You are inside the `tinfoil-debug-toolbox` container,
   not the CVM host root filesystem.
 - `HOME` and the working directory are `/run/root`.
 - The root filesystem is read-only. `/run` and `/tmp` are ephemeral and mounted
   `noexec`.
 - There is no supported package manager in this toolbox.
 - `vi` and `vim` both invoke the included BusyBox editor.
+- Prefer `tindbg boot` for runtime configuration and `tindbg` aliases for status, logs, exec, and disposable
+  containers. Direct Docker commands remain available as an escape hatch.
 - `DOCKER_HOST=unix:///var/run/docker.sock` grants control over workload
   containers in this debug CVM.
+- `tindbg ps`, `inspect`, `logs`, `exec`, and `run` directly invoke the Docker
+  CLI. Do not look for equivalent endpoints on `tinfoil-containers`.
 - `/dev/hvc1`, when present, is the operator toolbox console. Never use
   `/dev/hvc0`; it is reserved for CVM boot logging and the compile-time debug
   image shell.
@@ -19,7 +23,7 @@
 
 - Inspect before changing: start with `docker ps`, `docker inspect`, and
   `docker logs`.
-- Do not stop, remove, rename, or replace `tinfoil-ssh-installer`; that is the
+- Do not stop, remove, rename, or replace `tinfoil-debug-toolbox`; that is the
   toolbox providing the current session.
 - Do not assume Docker socket access is equivalent to CVM host-root access. The
   stripped CVM host root is deliberately not mounted here.
@@ -30,13 +34,20 @@
 
 ## Workload Discovery
 
+Edit `/run/root/tinfoil-config.debug.yml`, then run `tindbg boot`. This performs
+a clean replacement boot: existing managed workloads are removed, runtime
+artifacts are regenerated, and shim/egress are restarted by PID 1. To restore
+the verified boot configuration, run `tindbg template && tindbg boot`.
+`tindbg template` reads `/tinfoil/config.yml`, and `tindbg status` reads
+`/tinfoil/container-status.json`; only `tindbg boot` uses the manager socket.
+
 ```sh
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
 docker inspect <container>
 docker logs --tail=200 <container>
 ```
 
-Exclude `tinfoil-ssh-installer` when selecting a workload automatically.
+Exclude `tinfoil-debug-toolbox` when selecting a workload automatically.
 Container names are not guaranteed to resolve from the toolbox's network
 namespace. Use `docker exec`, inspect the target IP, or share the target's
 network namespace with a temporary diagnostic container.

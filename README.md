@@ -5,11 +5,18 @@ launched in user-debug mode.
 
 Customer SSH and the optional operator console both land inside this toolbox
 container, not inside the stripped CVM host rootfs. The toolbox contains
-Dropbear, a quiet static BusyBox `/bin/sh`, and the Docker CLI.
+Dropbear, a quiet static BusyBox `/bin/sh`, the Docker CLI, and `tindbg`.
 
 Useful commands:
 
 ```sh
+tindbg boot
+tindbg status
+tindbg template && tindbg boot  # restore verified boot config
+tindbg ps
+tindbg logs <container>
+tindbg exec -it <container> sh
+
 docker pull <image>
 docker run ...
 docker ps
@@ -18,6 +25,11 @@ docker inspect <container>
 docker exec -it <container> sh
 docker exec <container> nvidia-smi
 ```
+
+`tindbg ps`, `inspect`, `logs`, `exec`, and `run` are deliberately thin aliases
+for the included Docker CLI over `/var/run/docker.sock`. They do not add exec,
+TTY, resize, log-streaming, or diagnostic-container code to `tinfoil-containers`.
+Only `tindbg boot` calls the debug manager socket.
 
 Each session starts in `/run/root` with `README.md` for humans and `AGENTS.md`
 for coding agents. They explain workload discovery, container networking,

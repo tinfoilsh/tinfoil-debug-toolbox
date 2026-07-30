@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/ssh-server-contract.XXXXXXXX")"
-tag="ssh-server-contract:$(date +%s)"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/tinfoil-debug-toolbox-contract.XXXXXXXX")"
+tag="tinfoil-debug-toolbox-contract:$(date +%s)"
 authorized_key='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey contract'
 containers=()
 helpers=()
@@ -242,9 +242,9 @@ wait_for_pattern 'tinfoil:~#' "$hvc1_output"
 
 ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     -i "$scratch/customer-key" -p "$port" root@127.0.0.1 \
-    'printf "SSH_ENV|%s|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$([ -f README.md ] && echo yes || echo no)" "$([ -f AGENTS.md ] && echo yes || echo no)" "$(command -v vi)" "$(command -v vim)"' \
+    'printf "SSH_ENV|%s|%s|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$([ -f README.md ] && echo yes || echo no)" "$([ -f AGENTS.md ] && echo yes || echo no)" "$(command -v vi)" "$(command -v vim)" "$(command -v tindbg)"' \
     > "$scratch/ssh-env.out"
-grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|yes|yes|vi|/usr/local/bin/vim' "$scratch/ssh-env.out"
+grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|yes|yes|vi|/usr/local/bin/vim|/usr/local/bin/tindbg' "$scratch/ssh-env.out"
 
 python3 - "$scratch/customer-key" "$port" <<'PY'
 import fcntl
