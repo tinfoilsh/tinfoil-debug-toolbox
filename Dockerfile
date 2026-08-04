@@ -45,7 +45,10 @@ RUN wget -q https://matt.ucc.asn.au/dropbear/releases/dropbear-${DROPBEAR_VERSIO
     echo "${DROPBEAR_SHA256}  dropbear-${DROPBEAR_VERSION}.tar.bz2" | sha256sum -c - && \
     tar xjf dropbear-${DROPBEAR_VERSION}.tar.bz2
 
+COPY dropbear-root-groups.patch /tmp/dropbear-root-groups.patch
+
 RUN cd dropbear-${DROPBEAR_VERSION} && \
+    patch -p1 < /tmp/dropbear-root-groups.patch && \
     # Override defaults so the final scratch image does not need distro paths. \
     printf '%s\n' \
         '#undef SFTPSERVER_PATH' \

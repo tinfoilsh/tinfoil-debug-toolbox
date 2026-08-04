@@ -42,9 +42,9 @@ that CVM. The image intentionally does not require `/host`, host PID namespace,
 host systemd, or a shell installed in the CVM host rootfs.
 
 Dropbear listens on port `2222` by default so this endpoint does not assume
-host networking and does not require `NET_BIND_SERVICE`. When container
-capabilities are trimmed, the documented runtime requirement is `SETUID` and
-`SETGID` only.
+host networking or require any added Linux capabilities. The image accepts
+root sessions only when the process already has the expected root user and
+group state.
 
 The image assumes a read-only root filesystem with writable tmpfs mounts for
 `/run` and `/tmp`. Root's home directory lives at `/run/root`, so host keys,
@@ -72,7 +72,7 @@ Typical runtime shape:
 ```sh
 docker run --read-only \
   --tmpfs /run --tmpfs /tmp \
-  --cap-drop ALL --cap-add SETUID --cap-add SETGID \
+  --cap-drop ALL --security-opt no-new-privileges=true \
   -p 2222:2222 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --device /dev/hvc1:/dev/hvc1 \
