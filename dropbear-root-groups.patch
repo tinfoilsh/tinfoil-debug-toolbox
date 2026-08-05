@@ -1,0 +1,45 @@
+diff --git a/src/svr-auth.c b/src/svr-auth.c
+index de01458..de28153 100644
+--- a/src/svr-auth.c
++++ b/src/svr-auth.c
+@@ -498,6 +498,24 @@ static int utmp_gid(gid_t *ret_gid) {
+ }
+ #endif
+ 
++static int root_groups_already_active(void) {
++	gid_t groups[2];
++	int count;
++
++	if (getgid() != 0 || getegid() != 0) {
++		return 0;
++	}
++
++	count = getgroups(2, groups);
++	if (count == 0) {
++		return 1;
++	}
++	if (count == 1 && groups[0] == 0) {
++		return 1;
++	}
++	return 0;
++}
++
+ /* Switch to the ses.authstate user.
+  * Fails if not running as root and the user differs.
+  *
+@@ -510,9 +528,12 @@ void svr_switch_user(void) {
+ 	/* We can only change uid/gid as root ... */
+ 	if (getuid() == 0) {
+ 
+-		if ((setgid(ses.authstate.pw_gid) < 0) ||
+-			(initgroups(ses.authstate.pw_name, 
+-						ses.authstate.pw_gid) < 0)) {
++		if (setgid(ses.authstate.pw_gid) < 0) {
++			dropbear_exit("Error changing user group");
++		}
++		if (!(ses.authstate.pw_uid == 0 && ses.authstate.pw_gid == 0 &&
++				root_groups_already_active()) &&
++				initgroups(ses.authstate.pw_name, ses.authstate.pw_gid) < 0) {
+ 			dropbear_exit("Error changing user group");
+ 		}
+ 

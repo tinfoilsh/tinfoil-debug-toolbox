@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset SSH_AUTH_SOCK
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/tinfoil-debug-toolbox-contract.XXXXXXXX")"
@@ -208,16 +209,19 @@ if docker run --rm --read-only --tmpfs /run --tmpfs /tmp \
 fi
 grep -Fq '/dev/hvc1 is not a usable terminal' "$scratch/not-tty.err"
 
-echo "test: SSH and hvc1 share toolbox environment; hvc1 has a controlling PTY"
+echo "test: SSH and hvc1 work without capabilities and share toolbox environment"
 ssh-keygen -q -t ed25519 -N '' -f "$scratch/customer-key" >/dev/null
 start_pty "$scratch/state-shared" hvc1
 hvc1_path="$PTY_PATH"
 hvc1_input="$PTY_INPUT"
 hvc1_output="$PTY_OUTPUT"
+chmod 0666 "$hvc1_path"
 start_container \
     --read-only \
     --tmpfs /run \
     --tmpfs /tmp \
+    --cap-drop ALL \
+    --security-opt no-new-privileges=true \
     -p 127.0.0.1::2222 \
     -v "$hvc1_path:/dev/hvc1" \
     -e SSH_AUTHORIZED_KEYS="$(cat "$scratch/customer-key.pub")" \
@@ -245,6 +249,15 @@ ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/de
     'printf "SSH_ENV|%s|%s|%s|%s|%s|%s|%s|%s|%s\n" "$HOME" "$DOCKER_HOST" "$PATH" "$PWD" "$([ -f README.md ] && echo yes || echo no)" "$([ -f AGENTS.md ] && echo yes || echo no)" "$(command -v vi)" "$(command -v vim)" "$(command -v tindbg)"' \
     > "$scratch/ssh-env.out"
 grep -Fq 'SSH_ENV|/run/root|unix:///var/run/docker.sock|/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin|/run/root|yes|yes|vi|/usr/local/bin/vim|/usr/local/bin/tindbg' "$scratch/ssh-env.out"
+
+ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$scratch/customer-key" -p "$port" root@127.0.0.1 \
+    'grep -E "^(CapInh|CapPrm|CapEff|CapBnd|CapAmb|NoNewPrivs):" /proc/self/status' \
+    > "$scratch/ssh-security.out"
+for field in CapInh CapPrm CapEff CapBnd CapAmb; do
+    grep -Eq "^${field}:[[:space:]]+0000000000000000$" "$scratch/ssh-security.out"
+done
+grep -Eq '^NoNewPrivs:[[:space:]]+1$' "$scratch/ssh-security.out"
 
 python3 - "$scratch/customer-key" "$port" <<'PY'
 import fcntl
