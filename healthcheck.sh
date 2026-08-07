@@ -5,8 +5,6 @@ DROPBEAR_RUN_DIR=/run/dropbear
 ROOT_HOME=/run/root
 HOST_KEY="$DROPBEAR_RUN_DIR/dropbear_ed25519_host_key"
 DROPBEAR_PIDFILE="$DROPBEAR_RUN_DIR/dropbear.pid"
-CONSOLE_DEVICE=/dev/hvc1
-CONSOLE_PIDFILE=/run/tinfoil-toolbox-console.pid
 AUTHORIZED_KEYS_FILE="$ROOT_HOME/.ssh/authorized_keys"
 
 has_authorized_key() {
@@ -55,22 +53,8 @@ require_running_pidfile() {
 
 require_running_pidfile "$DROPBEAR_PIDFILE" "dropbear"
 
-console_available=0
-if [ -e "$CONSOLE_DEVICE" ]; then
-    [ -c "$CONSOLE_DEVICE" ] || {
-        echo "$CONSOLE_DEVICE is not a character device"
-        exit 1
-    }
-    /bin/stty -F "$CONSOLE_DEVICE" >/dev/null 2>&1 || {
-        echo "$CONSOLE_DEVICE is not a usable terminal"
-        exit 1
-    }
-    console_available=1
-    require_running_pidfile "$CONSOLE_PIDFILE" "toolbox console"
-fi
-
-if ! has_authorized_key && [ "$console_available" -eq 0 ]; then
-    echo "authorized_keys missing and toolbox console unavailable"
+if ! has_authorized_key; then
+    echo "authorized_keys missing or empty"
     exit 1
 fi
 

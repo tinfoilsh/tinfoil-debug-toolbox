@@ -15,9 +15,8 @@
   containers in this debug CVM.
 - `tindbg ps`, `inspect`, `logs`, `exec`, and `run` directly invoke the Docker
   CLI. Do not look for equivalent endpoints on `tinfoil-containers`.
-- `/dev/hvc1`, when present, is the operator toolbox console. Never use
-  `/dev/hvc0`; it is reserved for CVM boot logging and the compile-time debug
-  image shell.
+- SSH is the toolbox's only interactive access path. Do not create or attach
+  serial, HVC, or unauthenticated local shell access.
 
 ## Safety
 

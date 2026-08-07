@@ -3,9 +3,9 @@
 This image is the measured debug toolbox injected by `tinfoild` when a CVM is
 launched in user-debug mode.
 
-Customer SSH and the optional operator console both land inside this toolbox
-container, not inside the stripped CVM host rootfs. The toolbox contains
-Dropbear, a quiet static BusyBox `/bin/sh`, the Docker CLI, and `tindbg`.
+Customer SSH lands inside this toolbox container, not inside the stripped CVM
+host rootfs. The toolbox contains Dropbear, a quiet static BusyBox `/bin/sh`,
+the Docker CLI, and `tindbg`.
 
 Useful commands:
 
@@ -52,20 +52,21 @@ authorized keys, pidfiles, shell history, and the session documentation stay in
 tmpfs. The tmpfs mounts are `noexec`; install additional packages in a separate
 diagnostic container rather than modifying the toolbox.
 
-If the exact `/dev/hvc1` device is present, PID 1 also keeps an unauthenticated
-BusyBox root shell attached to that fixed operator console. `/dev/hvc0` is
-never used by this image; it remains reserved for CVM boot logging and the
-compile-time debug-image shell.
+At least one valid customer SSH public key is required. The toolbox does not
+open an HVC, serial, or unauthenticated local shell access path.
 
-The toolbox validates that `/dev/hvc1` is both a character device and a usable
-terminal. A present but invalid device fails startup clearly. The console
-shares SSH's `/run/root` home and working directory, Docker environment, and
-`PATH`. Ordinary logout restarts the console shell, while
-repeated immediate exits or loss of its supervisor fail the container closed.
+Dropbear reads `/run/root/.ssh/authorized_keys` for each new authentication, so
+an existing customer session can add or remove a temporary support key without
+restarting the toolbox. For example:
 
-When `/dev/hvc1` is available, `SSH_AUTHORIZED_KEYS` may be empty because the
-operator console supplies the access path. Without `/dev/hvc1`, at least one
-valid customer SSH public key is required.
+```sh
+cat /tmp/support-key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Removing a key blocks new sessions immediately but does not terminate an
+already-open session. Restart the toolbox container when existing support
+sessions must be forcibly disconnected.
 
 Typical runtime shape:
 
@@ -75,10 +76,6 @@ docker run --read-only \
   --cap-drop ALL --security-opt no-new-privileges=true \
   -p 2222:2222 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  --device /dev/hvc1:/dev/hvc1 \
   -e SSH_AUTHORIZED_KEYS="$(cat ~/.ssh/id_ed25519.pub)" \
   <image>
 ```
-
-The `/dev/hvc1` mapping is optional and fixed. Do not substitute `/dev/hvc0`
-or make the console device configurable.
