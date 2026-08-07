@@ -197,6 +197,33 @@ if b"tinfoil:~#" in after_resize:
     raise SystemExit(f"SSH resize redrew the prompt: {after_resize!r}")
 PY
 
+echo "test: authorized keys reload without restarting Dropbear"
+docker exec "$cid" /bin/sh -c 'test ! -e /dev/hvc0 && test ! -e /dev/hvc1'
+ssh-keygen -q -t ed25519 -N '' -f "$scratch/support-key" >/dev/null
+if ssh -q -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+   -o ConnectTimeout=1 -i "$scratch/support-key" -p "$port" root@127.0.0.1 true; then
+    echo "support key unexpectedly authenticated before authorization" >&2
+    exit 1
+fi
+dropbear_pid="$(docker exec "$cid" cat /run/dropbear/dropbear.pid)"
+ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$scratch/customer-key" -p "$port" root@127.0.0.1 \
+    'umask 077; cat >> /run/root/.ssh/authorized_keys' < "$scratch/support-key.pub"
+ssh -q -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$scratch/support-key" -p "$port" root@127.0.0.1 true
+[ "$(docker exec "$cid" cat /run/dropbear/dropbear.pid)" = "$dropbear_pid" ]
+ssh -q -T -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$scratch/support-key" -p "$port" root@127.0.0.1 \
+    'umask 077; cat > /run/root/.ssh/authorized_keys' < "$scratch/support-key.pub"
+if ssh -q -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+   -o ConnectTimeout=1 -i "$scratch/customer-key" -p "$port" root@127.0.0.1 true; then
+    echo "customer key unexpectedly authenticated after revocation" >&2
+    exit 1
+fi
+ssh -q -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i "$scratch/support-key" -p "$port" root@127.0.0.1 true
+[ "$(docker exec "$cid" cat /run/dropbear/dropbear.pid)" = "$dropbear_pid" ]
+
 docker exec "$cid" /healthcheck.sh
 docker stop -t 2 "$cid" >/dev/null
 

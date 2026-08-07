@@ -55,6 +55,19 @@ diagnostic container rather than modifying the toolbox.
 At least one valid customer SSH public key is required. The toolbox does not
 open an HVC, serial, or unauthenticated local shell access path.
 
+Dropbear reads `/run/root/.ssh/authorized_keys` for each new authentication, so
+an existing customer session can add or remove a temporary support key without
+restarting the toolbox. For example:
+
+```sh
+cat /tmp/support-key.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Removing a key blocks new sessions immediately but does not terminate an
+already-open session. Restart the toolbox container when existing support
+sessions must be forcibly disconnected.
+
 Typical runtime shape:
 
 ```sh
